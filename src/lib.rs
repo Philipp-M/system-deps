@@ -341,18 +341,18 @@ impl Dependencies {
                 return Err(Error::MissingLib(name.clone()));
             }
 
-            lib.link_paths
-                .iter()
-                .for_each(|l| flags.add(BuildFlag::SearchNative(l.to_string_lossy().to_string())));
-            lib.framework_paths.iter().for_each(|f| {
-                flags.add(BuildFlag::SearchFramework(f.to_string_lossy().to_string()))
-            });
-            lib.libs
-                .iter()
-                .for_each(|l| flags.add(BuildFlag::Lib(l.clone())));
-            lib.frameworks
-                .iter()
-                .for_each(|f| flags.add(BuildFlag::LibFramework(f.clone())));
+            // lib.link_paths
+            //     .iter()
+            //     .for_each(|l| flags.add(BuildFlag::SearchNative(l.to_string_lossy().to_string())));
+            // lib.framework_paths.iter().for_each(|f| {
+            //     flags.add(BuildFlag::SearchFramework(f.to_string_lossy().to_string()))
+            // });
+            // lib.libs
+            //     .iter()
+            //     .for_each(|l| flags.add(BuildFlag::Lib(l.clone())));
+            // lib.frameworks
+            //     .iter()
+            //     .for_each(|f| flags.add(BuildFlag::LibFramework(f.clone())));
         }
 
         // Export DEP_$CRATE_INCLUDE env variable with the headers paths,
@@ -628,7 +628,8 @@ impl Config {
                 match pkg_config::Config::new()
                     .atleast_version(&version)
                     .print_system_libs(false)
-                    .cargo_metadata(false)
+                    .cargo_metadata(true)
+                    .statik(true)
                     .probe(&lib_name)
                 {
                     Ok(lib) => Library::from_pkg_config(&lib_name, lib),
@@ -823,7 +824,8 @@ impl Library {
         let pkg_lib = pkg_config::Config::new()
             .atleast_version(&version)
             .print_system_libs(false)
-            .cargo_metadata(false)
+            .cargo_metadata(true)
+            .statik(true)
             .probe(lib);
 
         env::set_var("PKG_CONFIG_PATH", &old.unwrap_or_else(|_| "".into()));
