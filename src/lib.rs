@@ -307,9 +307,15 @@ impl Dependencies {
         v
     }
 
-    /// Returns a vector of [Library::libs] of each library, removing duplicates.
-    pub fn all_libs(&self) -> Vec<&str> {
-        self.aggregate_str(|l| &l.libs)
+    /// An iterator returning each [Library::libs] of each library, removing duplicates.
+    pub fn all_libs(&self) -> impl Iterator<Item = &str> {
+        self.libs
+            .values()
+            .map(|l| l.libs.iter().map(|lib| &lib.0))
+            .flatten()
+            .map(|s| s.as_str())
+            .sorted()
+            .dedup()
     }
 
     /// Returns a vector of [Library::link_paths] of each library, removing duplicates.
@@ -359,7 +365,10 @@ impl Dependencies {
                 lib.framework_paths = split_paths(&value);
             }
             if let Some(value) = env.get(&EnvVariable::new_lib(name)) {
-                lib.libs = split_string(&value);
+                lib.libs = split_string(&value)
+                    .into_iter()
+                    .map(|l| (l, false))
+                    .collect();
             }
             if let Some(value) = env.get(&EnvVariable::new_lib_framework(name)) {
                 lib.frameworks = split_string(&value);
@@ -392,7 +401,7 @@ impl Dependencies {
             });
             lib.libs
                 .iter()
-                .for_each(|l| flags.add(BuildFlag::Lib(l.clone(), lib.statik)));
+                .for_each(|l| flags.add(BuildFlag::Lib(l.0.clone(), lib.statik && l.1)));
             lib.frameworks
                 .iter()
                 .for_each(|f| flags.add(BuildFlag::LibFramework(f.clone())));
@@ -820,8 +829,8 @@ pub struct Library {
     pub name: String,
     /// From where the library settings have been retrieved
     pub source: Source,
-    /// libraries the linker should link on
-    pub libs: Vec<String>,
+    /// libraries the linker should link on, true if a static lib is available
+    pub libs: Vec<(String, bool)>,
     /// directories where the compiler should look for libraries
     pub link_paths: Vec<PathBuf>,
     /// frameworks the linker should link on
@@ -840,10 +849,40 @@ pub struct Library {
 
 impl Library {
     fn from_pkg_config(name: &str, l: pkg_config::Library) -> Self {
+        let system_roots = if cfg!(target_os = "macos") {
+            vec![PathBuf::from("/Library"), PathBuf::from("/System")]
+        } else {
+            let sysroot = env::var_os("PKG_CONFIG_SYSROOT_DIR")
+                .or_else(|| env::var_os("SYSROOT"))
+                .map(PathBuf::from);
+
+            if cfg!(target_os = "windows") {
+                if let Some(sysroot) = sysroot {
+                    vec![sysroot]
+                } else {
+                    vec![]
+                }
+            } else {
+                vec![sysroot.unwrap_or_else(|| PathBuf::from("/usr"))]
+            }
+        };
+
+        let is_static_available = |name: &String| -> bool {
+            let libname = format!("lib{}.a", name);
+
+            l.link_paths.iter().any(|dir| {
+                !system_roots.iter().any(|sys| dir.starts_with(sys)) && dir.join(&libname).exists()
+            })
+        };
+
         Self {
             name: name.to_string(),
             source: Source::PkgConfig,
-            libs: l.libs,
+            libs: l
+                .libs
+                .iter()
+                .map(|lib| (lib.to_owned(), is_static_available(lib)))
+                .collect(),
             link_paths: l.link_paths,
             include_paths: l.include_paths,
             frameworks: l.frameworks,
