@@ -849,6 +849,7 @@ pub struct Library {
 
 impl Library {
     fn from_pkg_config(name: &str, l: pkg_config::Library) -> Self {
+        // taken from: https://github.com/rust-lang/pkg-config-rs/blob/54325785816695df031cef3b26b6a9a203bbc01b/src/lib.rs#L502
         let system_roots = if cfg!(target_os = "macos") {
             vec![PathBuf::from("/Library"), PathBuf::from("/System")]
         } else {
